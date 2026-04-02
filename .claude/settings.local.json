@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(for i:*)",
+      "Bash(do convert:*)",
+      "Bash(done)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
