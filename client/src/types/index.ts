@@ -3,6 +3,8 @@ export interface Section {
   name: string;
 }
 
+export type ReadingStatus = "unread" | "reading" | "completed";
+
 export interface Book {
   id: string;
   folderName: string;
@@ -15,6 +17,9 @@ export interface Book {
   createdAt: string;
   coverImage: string | null;
   pageCount: number;
+  rating: number;
+  readingStatus: ReadingStatus;
+  lastReadAt: string | null;
 }
 
 export interface Series {

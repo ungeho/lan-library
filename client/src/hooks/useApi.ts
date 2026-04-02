@@ -33,9 +33,23 @@ export const api = {
     return request<Book[]>(`${BASE}/books${qs ? `?${qs}` : ""}`);
   },
   getBook: (id: string) => request<Book>(`${BASE}/books/${id}`),
-  updateBook: (id: string, data: Partial<Pick<Book, "title" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds">>) =>
+  updateBook: (id: string, data: Partial<Pick<Book, "title" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds" | "rating" | "readingStatus" | "lastReadAt">>) =>
     request<Book>(`${BASE}/books/${id}`, json(data)),
   getPages: (bookId: string) => request<{ bookId: string; pages: { index: number; filename: string; url: string }[] }>(`${BASE}/books/${bookId}/pages`),
+  bulkUpdateBooks: (ids: string[], update: Partial<Pick<Book, "sectionId" | "seriesId" | "categoryIds">>) =>
+    request<{ updated: number }>(`${BASE}/books/bulk`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, update }),
+    }),
+
+  uploadFiles: async (files: File[]): Promise<{ added: string[] }> => {
+    const form = new FormData();
+    for (const f of files) form.append("files", f);
+    const res = await fetch(`${BASE}/upload`, { method: "POST", body: form });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
 
   // Sections
   getSections: () => request<Section[]>(`${BASE}/sections`),

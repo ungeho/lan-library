@@ -1,8 +1,8 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "../hooks/useApi";
 import { Loading, ErrorMessage } from "../components/Loading";
-import type { Book, Section, Series, Category, PagesResponse } from "../types";
+import type { Book, Section, Series, Category, PagesResponse, ReadingStatus } from "../types";
 import styles from "./BookDetail.module.css";
 
 export function BookDetail() {
@@ -161,6 +161,36 @@ export function BookDetail() {
                 </div>
               )}
               <p className={styles.meta}>{book.pageCount} ページ</p>
+
+              {/* Rating */}
+              <div className={styles.ratingRow}>
+                <StarRating
+                  value={book.rating}
+                  onChange={async (r) => {
+                    const updated = await api.updateBook(book.id, { rating: r });
+                    if (updated) setBook({ ...book, ...updated });
+                  }}
+                />
+              </div>
+
+              {/* Reading status */}
+              <div className={styles.statusRow}>
+                <StatusBadge status={book.readingStatus} />
+                <select
+                  className={styles.statusSelect}
+                  value={book.readingStatus}
+                  onChange={async (e) => {
+                    const status = e.target.value as ReadingStatus;
+                    const updated = await api.updateBook(book.id, { readingStatus: status });
+                    if (updated) setBook({ ...book, ...updated });
+                  }}
+                >
+                  <option value="unread">未読</option>
+                  <option value="reading">読書中</option>
+                  <option value="completed">読了</option>
+                </select>
+              </div>
+
               <button
                 className={styles.editBtn}
                 onClick={() => setEditing(true)}
@@ -276,22 +306,78 @@ export function BookDetail() {
 
       {/* Page thumbnails */}
       {pages.pages.length > 0 && (
-        <div className={styles.thumbSection}>
-          <h2 className={styles.thumbTitle}>ページ一覧</h2>
-          <div className={styles.thumbGrid}>
-            {pages.pages.map((p) => (
-              <div
-                key={p.index}
-                className={styles.thumb}
-                onClick={() => navigate(`/read/${bookId}?page=${p.index}`)}
-              >
-                <img src={p.url} alt={`Page ${p.index + 1}`} loading="lazy" />
-                <span className={styles.thumbLabel}>{p.index + 1}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ThumbGrid pages={pages.pages} bookId={bookId!} />
       )}
     </div>
+  );
+}
+
+const THUMB_LIMIT = 50;
+
+function ThumbGrid({ pages, bookId }: { pages: { index: number; filename: string; url: string }[]; bookId: string }) {
+  const navigate = useNavigate();
+  const [showAll, setShowAll] = useState(false);
+
+  const visible = useMemo(
+    () => (showAll ? pages : pages.slice(0, THUMB_LIMIT)),
+    [pages, showAll]
+  );
+
+  return (
+    <div className={styles.thumbSection}>
+      <h2 className={styles.thumbTitle}>ページ一覧</h2>
+      <div className={styles.thumbGrid}>
+        {visible.map((p) => (
+          <div
+            key={p.index}
+            className={styles.thumb}
+            onClick={() => navigate(`/read/${bookId}?page=${p.index}`)}
+          >
+            <img src={p.url} alt={`Page ${p.index + 1}`} loading="lazy" />
+            <span className={styles.thumbLabel}>{p.index + 1}</span>
+          </div>
+        ))}
+      </div>
+      {!showAll && pages.length > THUMB_LIMIT && (
+        <button
+          className={styles.showAllBtn}
+          onClick={() => setShowAll(true)}
+        >
+          すべて表示（{pages.length}ページ）
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StarRating({ value, onChange }: { value: number; onChange: (r: number) => void }) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div className={styles.stars} onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={star}
+          className={`${styles.star} ${star <= (hover || value) ? styles.starFilled : ""}`}
+          onMouseEnter={() => setHover(star)}
+          onClick={() => onChange(star === value ? 0 : star)}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const STATUS_LABELS: Record<ReadingStatus, string> = {
+  unread: "未読",
+  reading: "読書中",
+  completed: "読了",
+};
+
+function StatusBadge({ status }: { status: ReadingStatus }) {
+  return (
+    <span className={`${styles.statusBadge} ${styles[`status_${status}`]}`}>
+      {STATUS_LABELS[status]}
+    </span>
   );
 }

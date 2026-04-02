@@ -1,6 +1,10 @@
 import { Router } from "express";
+import fs from "node:fs/promises";
+import path from "node:path";
+import multer from "multer";
 import type { MetadataStore } from "../store.js";
 import { listImages, readImage } from "../bookSource.js";
+import { getThumbnail } from "../thumbnail.js";
 
 export function libraryRouter(libraryDir: string, store: MetadataStore): Router {
   const router = Router();
@@ -8,6 +12,10 @@ export function libraryRouter(libraryDir: string, store: MetadataStore): Router 
   // Helper: build image URL for a book
   function imageUrl(folderName: string, filename: string) {
     return `/api/library/image/${encodeURIComponent(folderName)}/${encodeURIComponent(filename)}`;
+  }
+
+  function thumbUrl(folderName: string, filename: string) {
+    return `/api/library/thumb/${encodeURIComponent(folderName)}/${encodeURIComponent(filename)}`;
   }
 
   // ── Books ──
@@ -34,13 +42,10 @@ export function libraryRouter(libraryDir: string, store: MetadataStore): Router 
       books = books.filter((b) => b.categoryIds.includes(categoryId));
     }
 
-    const result = await Promise.all(
-      books.map(async (b) => {
-        const images = await listImages(libraryDir, b.folderName, b.sourceType);
-        const coverImage = images.length > 0 ? imageUrl(b.folderName, images[0]) : null;
-        return { ...b, coverImage, pageCount: images.length };
-      })
-    );
+    const result = books.map((b) => ({
+      ...b,
+      coverImage: b.coverFilename ? thumbUrl(b.folderName, b.coverFilename) : null,
+    }));
 
     res.json(result);
   });
@@ -50,13 +55,21 @@ export function libraryRouter(libraryDir: string, store: MetadataStore): Router 
     const book = store.getBook(req.params.id);
     if (!book) { res.status(404).json({ error: "Not found" }); return; }
 
-    const images = await listImages(libraryDir, book.folderName, book.sourceType);
-
     res.json({
       ...book,
-      pageCount: images.length,
-      coverImage: images.length > 0 ? imageUrl(book.folderName, images[0]) : null,
+      coverImage: book.coverFilename ? imageUrl(book.folderName, book.coverFilename) : null,
     });
+  });
+
+  // PATCH /api/library/books/bulk — must be before :id route
+  router.patch("/books/bulk", async (req, res) => {
+    const { ids, update } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: "ids required" });
+      return;
+    }
+    const count = await store.bulkUpdateBooks(ids, update ?? {});
+    res.json({ updated: count });
   });
 
   // PATCH /api/library/books/:id
@@ -64,6 +77,38 @@ export function libraryRouter(libraryDir: string, store: MetadataStore): Router 
     const updated = await store.updateBook(req.params.id, req.body);
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
     res.json(updated);
+  });
+
+  // POST /api/library/upload — upload ZIP files via drag & drop
+  const upload = multer({ dest: path.join(libraryDir, ".uploads") });
+  router.post("/upload", upload.array("files"), async (req, res) => {
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: "No files" });
+      return;
+    }
+
+    const added: string[] = [];
+    for (const file of files) {
+      const originalName = file.originalname;
+      if (!originalName.toLowerCase().endsWith(".zip")) {
+        await fs.unlink(file.path).catch(() => {});
+        continue;
+      }
+      const dest = path.join(libraryDir, originalName);
+      // Don't overwrite existing files
+      try {
+        await fs.access(dest);
+        await fs.unlink(file.path).catch(() => {});
+      } catch {
+        await fs.rename(file.path, dest);
+        added.push(originalName);
+      }
+    }
+
+    // Trigger sync to pick up new books
+    await store.sync();
+    res.json({ added });
   });
 
   // GET /api/library/books/:id/pages
@@ -156,6 +201,22 @@ export function libraryRouter(libraryDir: string, store: MetadataStore): Router 
     const ok = await store.deleteCategory(req.params.id);
     if (!ok) { res.status(404).json({ error: "Not found" }); return; }
     res.status(204).end();
+  });
+
+  // ── Thumbnail serving ──
+
+  router.get("/thumb/:folderName/:filename", async (req, res) => {
+    const { folderName, filename } = req.params;
+    const book = store.getBookByFolder(folderName);
+    const sourceType = book?.sourceType ?? "folder";
+
+    const original = await readImage(libraryDir, folderName, sourceType, filename);
+    if (!original) { res.status(404).json({ error: "Not found" }); return; }
+
+    const thumb = await getThumbnail(libraryDir, folderName, filename, original.data);
+    res.set("Content-Type", thumb.mime);
+    res.set("Cache-Control", "public, max-age=604800");
+    res.send(thumb.data);
   });
 
   // ── Image serving ──

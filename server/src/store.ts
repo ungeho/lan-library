@@ -12,6 +12,8 @@ export interface Section {
   name: string;
 }
 
+export type ReadingStatus = "unread" | "reading" | "completed";
+
 export interface Book {
   id: string;
   folderName: string;
@@ -22,6 +24,11 @@ export interface Book {
   volumeNumber: number | null;
   categoryIds: string[];
   createdAt: string;
+  pageCount: number;
+  coverFilename: string | null;
+  rating: number;
+  readingStatus: ReadingStatus;
+  lastReadAt: string | null;
 }
 
 export interface Series {
@@ -66,6 +73,11 @@ export class MetadataStore {
           ...b,
           sourceType: b.sourceType ?? "folder",
           sectionId: b.sectionId ?? null,
+          pageCount: b.pageCount ?? 0,
+          coverFilename: b.coverFilename ?? null,
+          rating: b.rating ?? 0,
+          readingStatus: b.readingStatus ?? "unread",
+          lastReadAt: b.lastReadAt ?? null,
         })),
         series: parsed.series ?? [],
         categories: parsed.categories ?? [],
@@ -93,7 +105,7 @@ export class MetadataStore {
 
     const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
 
-    const sources: { name: string; type: SourceType }[] = [];
+    const sources: { name: string; type: SourceType; pageCount: number; coverFilename: string | null }[] = [];
 
     for (const entry of entries) {
       if (entry.startsWith(".")) continue;
@@ -103,18 +115,23 @@ export class MetadataStore {
 
       if (stat.isDirectory()) {
         const files = await fs.readdir(fullPath).catch(() => []);
-        const hasImages = files.some((f) =>
-          IMAGE_EXT.has(path.extname(f).toLowerCase())
-        );
-        if (hasImages) sources.push({ name: entry, type: "folder" });
+        const imageFiles = files
+          .filter((f) => IMAGE_EXT.has(path.extname(f).toLowerCase()))
+          .sort();
+        if (imageFiles.length > 0) {
+          sources.push({ name: entry, type: "folder", pageCount: imageFiles.length, coverFilename: imageFiles[0] });
+        }
       } else if (entry.toLowerCase().endsWith(".zip")) {
-        // Verify zip contains images
         try {
           const zip = new AdmZip(fullPath);
-          const hasImages = zip
+          const imageEntries = zip
             .getEntries()
-            .some((e) => !e.isDirectory && IMAGE_EXT.has(path.extname(e.entryName).toLowerCase()));
-          if (hasImages) sources.push({ name: entry, type: "zip" });
+            .filter((e) => !e.isDirectory && IMAGE_EXT.has(path.extname(e.entryName).toLowerCase()))
+            .map((e) => e.entryName)
+            .sort();
+          if (imageEntries.length > 0) {
+            sources.push({ name: entry, type: "zip", pageCount: imageEntries.length, coverFilename: imageEntries[0] });
+          }
         } catch {
           // Invalid zip, skip
         }
@@ -139,17 +156,28 @@ export class MetadataStore {
           volumeNumber: null,
           categoryIds: [],
           createdAt: new Date().toISOString(),
+          pageCount: src.pageCount,
+          coverFilename: src.coverFilename,
+          rating: 0,
+          readingStatus: "unread",
+          lastReadAt: null,
         });
         this.dirty = true;
       }
     }
 
-    // Update sourceType for existing books (in case field is missing from old data)
-    const sourceMap = new Map(sources.map((s) => [s.name, s.type]));
+    // Update sourceType, pageCount, coverFilename for existing books
+    const sourceMap = new Map(sources.map((s) => [s.name, s]));
     for (const book of this.data.books) {
-      const expected = sourceMap.get(book.folderName);
-      if (expected && book.sourceType !== expected) {
-        book.sourceType = expected;
+      const src = sourceMap.get(book.folderName);
+      if (!src) continue;
+      if (book.sourceType !== src.type) {
+        book.sourceType = src.type;
+        this.dirty = true;
+      }
+      if (book.pageCount !== src.pageCount || book.coverFilename !== src.coverFilename) {
+        book.pageCount = src.pageCount;
+        book.coverFilename = src.coverFilename;
         this.dirty = true;
       }
     }
@@ -178,7 +206,7 @@ export class MetadataStore {
 
   async updateBook(
     id: string,
-    update: Partial<Pick<Book, "title" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds">>
+    update: Partial<Pick<Book, "title" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds" | "rating" | "readingStatus" | "lastReadAt">>
   ): Promise<Book | null> {
     const book = this.data.books.find((b) => b.id === id);
     if (!book) return null;
@@ -187,8 +215,27 @@ export class MetadataStore {
     if (update.seriesId !== undefined) book.seriesId = update.seriesId;
     if (update.volumeNumber !== undefined) book.volumeNumber = update.volumeNumber;
     if (update.categoryIds !== undefined) book.categoryIds = update.categoryIds;
+    if (update.rating !== undefined) book.rating = update.rating;
+    if (update.readingStatus !== undefined) book.readingStatus = update.readingStatus;
+    if (update.lastReadAt !== undefined) book.lastReadAt = update.lastReadAt;
     await this.save();
     return book;
+  }
+
+  async bulkUpdateBooks(
+    ids: string[],
+    update: Partial<Pick<Book, "sectionId" | "seriesId" | "categoryIds">>
+  ): Promise<number> {
+    let count = 0;
+    for (const book of this.data.books) {
+      if (!ids.includes(book.id)) continue;
+      if (update.sectionId !== undefined) book.sectionId = update.sectionId;
+      if (update.seriesId !== undefined) book.seriesId = update.seriesId;
+      if (update.categoryIds !== undefined) book.categoryIds = update.categoryIds;
+      count++;
+    }
+    if (count > 0) await this.save();
+    return count;
   }
 
   // ---------- Sections ----------

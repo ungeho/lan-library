@@ -124,7 +124,13 @@ export async function readImage(
     if (!zip) return null;
     const entry = zip.getEntry(filename);
     if (!entry) return null;
-    return { data: entry.getData(), mime };
+    const data = await new Promise<Buffer>((resolve, reject) => {
+      entry.getDataAsync((buf, err) => {
+        if (err) reject(new Error(String(err)));
+        else resolve(buf);
+      });
+    });
+    return { data, mime };
   }
 
   // folder

@@ -4,6 +4,40 @@
   margin: 0 auto;
 }
 
+/* Drop overlay */
+.dropOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(74, 144, 217, 0.15);
+  border: 3px dashed #4a90d9;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dropMessage {
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 1.5rem 3rem;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.uploadBanner {
+  background: #4a90d9;
+  color: #fff;
+  text-align: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 /* Section tabs */
 .tabs {
   display: flex;
@@ -12,6 +46,12 @@
   overflow-x: auto;
   border-bottom: 2px solid var(--color-border);
   padding-bottom: 0;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .tab {
@@ -107,12 +147,6 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.cover {
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  background: var(--color-bg);
-}
-
 .cover img {
   width: 100%;
   height: 100%;
@@ -149,6 +183,33 @@
   color: var(--color-text-muted);
 }
 
+/* Card rating & status */
+.cardRating {
+  white-space: nowrap;
+}
+
+.cardStar {
+  color: #f5a623;
+}
+
+.cardStatus {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+  align-self: flex-start;
+}
+
+.cardStatus_reading {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.cardStatus_completed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
 .empty {
   display: flex;
   flex-direction: column;
@@ -171,11 +232,139 @@
   font-size: 0.8rem;
 }
 
+/* Select / Bulk edit */
+.selectBtn {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.selectBtn:hover { background: var(--color-border); }
+.selectBtnActive {
+  background: #4a90d9;
+  color: #fff;
+  border-color: #4a90d9;
+}
+.selectBtnActive:hover { background: #3a7bc8; }
+
+.bulkBar {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bulkTop {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.bulkCheckAll {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.bulkFields {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.bulkCategories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.bulkCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.bulkSaveBtn {
+  align-self: flex-start;
+  padding: 0.5rem 1.2rem;
+  border: none;
+  border-radius: 6px;
+  background: #4a90d9;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bulkSaveBtn:hover { background: #3a7bc8; }
+.bulkSaveBtn:disabled { opacity: 0.5; cursor: default; }
+
+.selectOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 0.4rem;
+  transition: background 0.15s;
+}
+
+.selectOverlayActive {
+  background: rgba(74, 144, 217, 0.35);
+}
+
+.selectCheck {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.selectOverlayActive .selectCheck {
+  background: #4a90d9;
+  border-color: #4a90d9;
+}
+
+.cardSelected {
+  outline: 2px solid #4a90d9;
+  outline-offset: -2px;
+}
+
+.cover {
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  background: var(--color-bg);
+  position: relative;
+}
+
 @media (max-width: 640px) {
   .filters {
     flex-direction: column;
   }
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  .bulkFields {
+    flex-direction: column;
   }
 }
