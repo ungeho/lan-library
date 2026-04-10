@@ -72,6 +72,17 @@ export function libraryRouter(libraryDir: string, store: MetadataStore): Router 
     res.json({ updated: count });
   });
 
+  // PATCH /api/library/books/bulk-volumes — sequential volume assignment
+  router.patch("/books/bulk-volumes", async (req, res) => {
+    const { orderedIds, startFrom } = req.body;
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      res.status(400).json({ error: "orderedIds required" });
+      return;
+    }
+    const count = await store.bulkAssignVolumes(orderedIds, startFrom ?? 1);
+    res.json({ updated: count });
+  });
+
   // PATCH /api/library/books/:id
   router.patch("/books/:id", async (req, res) => {
     const updated = await store.updateBook(req.params.id, req.body);

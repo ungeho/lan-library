@@ -33,14 +33,20 @@ export const api = {
     return request<Book[]>(`${BASE}/books${qs ? `?${qs}` : ""}`);
   },
   getBook: (id: string) => request<Book>(`${BASE}/books/${id}`),
-  updateBook: (id: string, data: Partial<Pick<Book, "title" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds" | "rating" | "readingStatus" | "lastReadAt">>) =>
+  updateBook: (id: string, data: Partial<Pick<Book, "title" | "author" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds" | "rating" | "readingStatus" | "lastReadAt">>) =>
     request<Book>(`${BASE}/books/${id}`, json(data)),
   getPages: (bookId: string) => request<{ bookId: string; pages: { index: number; filename: string; url: string }[] }>(`${BASE}/books/${bookId}/pages`),
-  bulkUpdateBooks: (ids: string[], update: Partial<Pick<Book, "sectionId" | "seriesId" | "categoryIds">>) =>
+  bulkUpdateBooks: (ids: string[], update: Record<string, unknown>) =>
     request<{ updated: number }>(`${BASE}/books/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids, update }),
+    }),
+  bulkAssignVolumes: (orderedIds: string[], startFrom: number) =>
+    request<{ updated: number }>(`${BASE}/books/bulk-volumes`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedIds, startFrom }),
     }),
 
   uploadFiles: async (files: File[]): Promise<{ added: string[] }> => {

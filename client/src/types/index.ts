@@ -10,6 +10,7 @@ export interface Book {
   folderName: string;
   sourceType: "folder" | "zip";
   title: string;
+  author: string | null;
   sectionId: string | null;
   seriesId: string | null;
   volumeNumber: number | null;

@@ -20,6 +20,7 @@ export function BookDetail() {
 
   // Edit form state
   const [editTitle, setEditTitle] = useState("");
+  const [editAuthor, setEditAuthor] = useState("");
   const [editSectionId, setEditSectionId] = useState<string>("");
   const [editSeriesId, setEditSeriesId] = useState<string>("");
   const [editVolume, setEditVolume] = useState<string>("");
@@ -45,6 +46,7 @@ export function BookDetail() {
         setAllSeries(ser);
         setAllCategories(cat);
         setEditTitle(b.title);
+        setEditAuthor(b.author ?? "");
         setEditSectionId(b.sectionId ?? "");
         setEditSeriesId(b.seriesId ?? "");
         setEditVolume(b.volumeNumber != null ? String(b.volumeNumber) : "");
@@ -59,6 +61,7 @@ export function BookDetail() {
     try {
       const updated = await api.updateBook(bookId, {
         title: editTitle,
+        author: editAuthor || null,
         sectionId: editSectionId || null,
         seriesId: editSeriesId || null,
         volumeNumber: editVolume ? Number(editVolume) : null,
@@ -139,6 +142,9 @@ export function BookDetail() {
           {!editing ? (
             <>
               <h1 className={styles.title}>{book.title}</h1>
+              {book.author && (
+                <p className={styles.author}>{book.author}</p>
+              )}
               {sectionName && (
                 <p className={styles.meta}>
                   セクション: <span className={styles.tag}>{sectionName}</span>
@@ -206,6 +212,16 @@ export function BookDetail() {
                   className={styles.input}
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
+                />
+              </label>
+
+              <label className={styles.label}>
+                著者名
+                <input
+                  className={styles.input}
+                  value={editAuthor}
+                  onChange={(e) => setEditAuthor(e.target.value)}
+                  placeholder="著者名"
                 />
               </label>
 

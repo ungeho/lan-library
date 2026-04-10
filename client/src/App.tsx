@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Header } from "./components/Header";
 import { Bookshelf } from "./pages/Bookshelf";
 import { BookDetail } from "./pages/BookDetail";
+import { SeriesDetail } from "./pages/SeriesDetail";
 import { Reader } from "./pages/Reader";
 import { useDarkMode } from "./hooks/useDarkMode";
 
@@ -21,6 +22,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<Bookshelf />} />
                   <Route path="/book/:bookId" element={<BookDetail />} />
+                  <Route path="/series/:seriesId" element={<SeriesDetail />} />
                 </Routes>
               </main>
             </>

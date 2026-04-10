@@ -64,6 +64,12 @@
   word-break: break-word;
 }
 
+.author {
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
 .meta {
   color: var(--color-text-muted);
   font-size: 0.9rem;

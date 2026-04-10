@@ -32,10 +32,20 @@ export function Bookshelf() {
   // Bulk edit
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkTitle, setBulkTitle] = useState("");
+  const [bulkAuthor, setBulkAuthor] = useState("");
   const [bulkSectionId, setBulkSectionId] = useState("");
   const [bulkSeriesId, setBulkSeriesId] = useState("");
-  const [bulkCategoryIds, setBulkCategoryIds] = useState<string[]>([]);
+  const [bulkAddCategoryIds, setBulkAddCategoryIds] = useState<string[]>([]);
+  const [bulkRemoveCategoryIds, setBulkRemoveCategoryIds] = useState<string[]>([]);
   const [bulkSaving, setBulkSaving] = useState(false);
+
+  // Volume assign mode (separate from bulk edit)
+  const [volumeMode, setVolumeMode] = useState(false);
+  const [volumeOrder, setVolumeOrder] = useState<string[]>([]);
+  const [volumeStart, setVolumeStart] = useState(1);
+  const [volumeSaving, setVolumeSaving] = useState(false);
+  const [volumeLastClicked, setVolumeLastClicked] = useState<string | null>(null);
 
   useEffect(() => {
     sessionStorage.setItem("bookshelf-active-section", activeSection);
@@ -99,22 +109,64 @@ export function Bookshelf() {
   function exitSelectMode() {
     setSelectMode(false);
     setSelected(new Set());
+    setBulkTitle("");
+    setBulkAuthor("");
     setBulkSectionId("");
     setBulkSeriesId("");
-    setBulkCategoryIds([]);
+    setBulkAddCategoryIds([]);
+    setBulkRemoveCategoryIds([]);
+  }
+
+  function handleVolumeClick(id: string, shiftKey: boolean) {
+    if (shiftKey && volumeLastClicked) {
+      // Range select: add all books between last clicked and current in visual order
+      const fromIdx = visualOrderIds.indexOf(volumeLastClicked);
+      const toIdx = visualOrderIds.indexOf(id);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const start = Math.min(fromIdx, toIdx);
+        const end = Math.max(fromIdx, toIdx);
+        const rangeIds = visualOrderIds.slice(start, end + 1);
+        setVolumeOrder((prev) => {
+          const newOrder = [...prev];
+          for (const rid of rangeIds) {
+            if (!newOrder.includes(rid)) newOrder.push(rid);
+          }
+          return newOrder;
+        });
+        setVolumeLastClicked(id);
+        return;
+      }
+    }
+    // Normal toggle
+    setVolumeOrder((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+    setVolumeLastClicked(id);
+  }
+
+  function exitVolumeMode() {
+    setVolumeMode(false);
+    setVolumeOrder([]);
+    setVolumeStart(1);
+    setVolumeLastClicked(null);
   }
 
   async function handleBulkSave() {
     if (selected.size === 0) return;
     setBulkSaving(true);
     try {
-      const update: Partial<Pick<Book, "sectionId" | "seriesId" | "categoryIds">> = {};
+      const update: Record<string, unknown> = {};
+      if (bulkTitle) update.title = bulkTitle;
+      if (bulkAuthor) update.author = bulkAuthor;
       if (bulkSectionId === "__clear__") update.sectionId = null;
       else if (bulkSectionId) update.sectionId = bulkSectionId;
       if (bulkSeriesId === "__clear__") update.seriesId = null;
       else if (bulkSeriesId) update.seriesId = bulkSeriesId;
-      if (bulkCategoryIds.length > 0) update.categoryIds = bulkCategoryIds;
-      await api.bulkUpdateBooks([...selected], update);
+      if (bulkAddCategoryIds.length > 0) update.addCategoryIds = bulkAddCategoryIds;
+      if (bulkRemoveCategoryIds.length > 0) update.removeCategoryIds = bulkRemoveCategoryIds;
+      if (Object.keys(update).length > 0) {
+        await api.bulkUpdateBooks([...selected], update);
+      }
       exitSelectMode();
       fetchBooks();
     } catch {
@@ -123,6 +175,27 @@ export function Bookshelf() {
       setBulkSaving(false);
     }
   }
+
+  async function handleVolumeSave() {
+    if (volumeOrder.length === 0) return;
+    setVolumeSaving(true);
+    try {
+      await api.bulkAssignVolumes(volumeOrder, volumeStart);
+      exitVolumeMode();
+      fetchBooks();
+    } catch {
+      alert("巻数の付与に失敗しました");
+    } finally {
+      setVolumeSaving(false);
+    }
+  }
+
+  // Map book id -> volume number to be assigned (for preview)
+  const volumePreview = useMemo(() => {
+    const map = new Map<string, number>();
+    volumeOrder.forEach((id, i) => map.set(id, volumeStart + i));
+    return map;
+  }, [volumeOrder, volumeStart]);
 
   // Filter by status + sort
   const displayBooks = useMemo(() => {
@@ -166,6 +239,16 @@ export function Bookshelf() {
   for (const group of grouped.values()) {
     group.sort((a, b) => (a.volumeNumber ?? 0) - (b.volumeNumber ?? 0));
   }
+
+  // Flat list of book IDs in visual order (series groups first, then ungrouped)
+  const visualOrderIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const [, group] of grouped) {
+      for (const b of group) ids.push(b.id);
+    }
+    for (const b of ungrouped) ids.push(b.id);
+    return ids;
+  }, [grouped, ungrouped]);
 
   const allBookIds = displayBooks.map((b) => b.id);
   const allSelected = allBookIds.length > 0 && allBookIds.every((id) => selected.has(id));
@@ -220,7 +303,7 @@ export function Bookshelf() {
         <input
           type="search"
           className={styles.searchInput}
-          placeholder="タイトル・カテゴリ・セクションで検索..."
+          placeholder="タイトル・著者名・カテゴリ・セクションで検索..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -267,9 +350,21 @@ export function Bookshelf() {
         </select>
         <button
           className={`${styles.selectBtn} ${selectMode ? styles.selectBtnActive : ""}`}
-          onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+          onClick={() => {
+            if (selectMode) { exitSelectMode(); }
+            else { if (volumeMode) exitVolumeMode(); setSelectMode(true); }
+          }}
         >
           {selectMode ? "選択解除" : "一括編集"}
+        </button>
+        <button
+          className={`${styles.selectBtn} ${volumeMode ? styles.volumeBtnActive : ""}`}
+          onClick={() => {
+            if (volumeMode) { exitVolumeMode(); }
+            else { if (selectMode) exitSelectMode(); setVolumeMode(true); }
+          }}
+        >
+          {volumeMode ? "巻数モード解除" : "巻数付与"}
         </button>
       </div>
 
@@ -290,6 +385,20 @@ export function Bookshelf() {
             </label>
           </div>
           <div className={styles.bulkFields}>
+            <input
+              type="text"
+              className={styles.bulkInput}
+              placeholder="タイトルを一括設定..."
+              value={bulkTitle}
+              onChange={(e) => setBulkTitle(e.target.value)}
+            />
+            <input
+              type="text"
+              className={styles.bulkInput}
+              placeholder="著者名を一括設定..."
+              value={bulkAuthor}
+              onChange={(e) => setBulkAuthor(e.target.value)}
+            />
             <select
               className={styles.select}
               value={bulkSectionId}
@@ -312,22 +421,50 @@ export function Bookshelf() {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            <div className={styles.bulkCategories}>
-              {allCategories.map((c) => (
-                <label key={c.id} className={styles.bulkCheckbox}>
-                  <input
-                    type="checkbox"
-                    checked={bulkCategoryIds.includes(c.id)}
-                    onChange={() =>
-                      setBulkCategoryIds((prev) =>
-                        prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
-                      )
-                    }
-                  />
-                  {c.name}
-                </label>
-              ))}
-            </div>
+            {allCategories.length > 0 && (
+              <div className={styles.bulkCategorySection}>
+                <div className={styles.bulkCategoryGroup}>
+                  <span className={styles.bulkCategoryLabel}>追加</span>
+                  <div className={styles.bulkCategories}>
+                    {allCategories.map((c) => (
+                      <label key={c.id} className={styles.bulkCheckbox}>
+                        <input
+                          type="checkbox"
+                          checked={bulkAddCategoryIds.includes(c.id)}
+                          disabled={bulkRemoveCategoryIds.includes(c.id)}
+                          onChange={() =>
+                            setBulkAddCategoryIds((prev) =>
+                              prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                            )
+                          }
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className={styles.bulkCategoryGroup}>
+                  <span className={`${styles.bulkCategoryLabel} ${styles.bulkCategoryLabelRemove}`}>外す</span>
+                  <div className={styles.bulkCategories}>
+                    {allCategories.map((c) => (
+                      <label key={c.id} className={styles.bulkCheckbox}>
+                        <input
+                          type="checkbox"
+                          checked={bulkRemoveCategoryIds.includes(c.id)}
+                          disabled={bulkAddCategoryIds.includes(c.id)}
+                          onChange={() =>
+                            setBulkRemoveCategoryIds((prev) =>
+                              prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                            )
+                          }
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <button
             className={styles.bulkSaveBtn}
@@ -336,6 +473,48 @@ export function Bookshelf() {
           >
             {bulkSaving ? "保存中..." : `${selected.size}件を更新`}
           </button>
+        </div>
+      )}
+
+      {/* Volume assign bar */}
+      {volumeMode && (
+        <div className={styles.volumeBar}>
+          <div className={styles.volumeBarHeader}>
+            <span className={styles.volumeBarTitle}>巻数付与モード</span>
+            <span className={styles.volumeBarHint}>
+              クリックした順に巻数を割り当てます。Shift+クリックで範囲選択。もう一度クリックで解除。
+            </span>
+          </div>
+          <div className={styles.volumeBarControls}>
+            <label className={styles.volumeStartLabel}>
+              開始番号
+              <input
+                type="number"
+                className={styles.volumeStartInput}
+                value={volumeStart}
+                onChange={(e) => setVolumeStart(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                min={1}
+              />
+            </label>
+            <span className={styles.volumeBarCount}>
+              {volumeOrder.length}件選択中
+              {volumeOrder.length > 0 && ` (第${volumeStart}巻〜第${volumeStart + volumeOrder.length - 1}巻)`}
+            </span>
+            <button
+              className={styles.volumeBarClear}
+              onClick={() => setVolumeOrder([])}
+              disabled={volumeOrder.length === 0}
+            >
+              選択をリセット
+            </button>
+            <button
+              className={styles.bulkSaveBtn}
+              disabled={volumeOrder.length === 0 || volumeSaving}
+              onClick={handleVolumeSave}
+            >
+              {volumeSaving ? "保存中..." : `${volumeOrder.length}件に巻数を付与`}
+            </button>
+          </div>
         </div>
       )}
 
@@ -365,6 +544,9 @@ export function Bookshelf() {
                 selectMode={selectMode}
                 isSelected={selected.has(b.id)}
                 onToggle={() => toggleSelect(b.id)}
+                volumeMode={volumeMode}
+                volumeNumber={volumePreview.get(b.id)}
+                onVolumeToggle={(e) => handleVolumeClick(b.id, e.shiftKey)}
               />
             ))}
           </div>
@@ -385,6 +567,9 @@ export function Bookshelf() {
                 selectMode={selectMode}
                 isSelected={selected.has(b.id)}
                 onToggle={() => toggleSelect(b.id)}
+                volumeMode={volumeMode}
+                volumeNumber={volumePreview.get(b.id)}
+                onVolumeToggle={(e) => handleVolumeClick(b.id, e.shiftKey)}
               />
             ))}
           </div>
@@ -399,11 +584,17 @@ function BookCard({
   selectMode,
   isSelected,
   onToggle,
+  volumeMode,
+  volumeNumber,
+  onVolumeToggle,
 }: {
   book: Book;
   selectMode: boolean;
   isSelected: boolean;
   onToggle: () => void;
+  volumeMode: boolean;
+  volumeNumber: number | undefined;
+  onVolumeToggle: (e: React.MouseEvent) => void;
 }) {
   const inner = (
     <>
@@ -418,9 +609,18 @@ function BookCard({
             <div className={styles.selectCheck}>{isSelected ? "✓" : ""}</div>
           </div>
         )}
+        {volumeMode && volumeNumber != null && (
+          <div className={styles.volumeBadge}>
+            第{volumeNumber}巻
+          </div>
+        )}
+        {volumeMode && volumeNumber == null && (
+          <div className={styles.volumeOverlay} />
+        )}
       </div>
       <div className={styles.info}>
         <span className={styles.title}>{book.title}</span>
+        {book.author && <span className={styles.cardAuthor}>{book.author}</span>}
         <span className={styles.meta}>
           {book.volumeNumber != null && `第${book.volumeNumber}巻 · `}
           {book.pageCount}P
@@ -441,6 +641,17 @@ function BookCard({
     </>
   );
 
+  if (volumeMode) {
+    return (
+      <div
+        className={`${styles.card} ${volumeNumber != null ? styles.cardVolumeSelected : ""}`}
+        onClick={(e) => onVolumeToggle(e)}
+      >
+        {inner}
+      </div>
+    );
+  }
+
   if (selectMode) {
     return (
       <div className={`${styles.card} ${isSelected ? styles.cardSelected : ""}`} onClick={onToggle}>
@@ -455,3 +666,5 @@ function BookCard({
     </Link>
   );
 }
+
+

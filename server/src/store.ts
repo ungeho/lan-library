@@ -19,6 +19,7 @@ export interface Book {
   folderName: string;
   sourceType: SourceType;
   title: string;
+  author: string | null;
   sectionId: string | null;
   seriesId: string | null;
   volumeNumber: number | null;
@@ -72,6 +73,7 @@ export class MetadataStore {
         books: (parsed.books ?? []).map((b: Record<string, unknown>) => ({
           ...b,
           sourceType: b.sourceType ?? "folder",
+          author: b.author ?? null,
           sectionId: b.sectionId ?? null,
           pageCount: b.pageCount ?? 0,
           coverFilename: b.coverFilename ?? null,
@@ -151,6 +153,7 @@ export class MetadataStore {
           folderName: src.name,
           sourceType: src.type,
           title: displayTitle,
+          author: null,
           sectionId: null,
           seriesId: null,
           volumeNumber: null,
@@ -206,11 +209,12 @@ export class MetadataStore {
 
   async updateBook(
     id: string,
-    update: Partial<Pick<Book, "title" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds" | "rating" | "readingStatus" | "lastReadAt">>
+    update: Partial<Pick<Book, "title" | "author" | "sectionId" | "seriesId" | "volumeNumber" | "categoryIds" | "rating" | "readingStatus" | "lastReadAt">>
   ): Promise<Book | null> {
     const book = this.data.books.find((b) => b.id === id);
     if (!book) return null;
     if (update.title !== undefined) book.title = update.title;
+    if (update.author !== undefined) book.author = update.author;
     if (update.sectionId !== undefined) book.sectionId = update.sectionId;
     if (update.seriesId !== undefined) book.seriesId = update.seriesId;
     if (update.volumeNumber !== undefined) book.volumeNumber = update.volumeNumber;
@@ -224,14 +228,42 @@ export class MetadataStore {
 
   async bulkUpdateBooks(
     ids: string[],
-    update: Partial<Pick<Book, "sectionId" | "seriesId" | "categoryIds">>
+    update: Partial<Pick<Book, "title" | "author" | "sectionId" | "seriesId" | "categoryIds">> & {
+      addCategoryIds?: string[];
+      removeCategoryIds?: string[];
+    }
   ): Promise<number> {
     let count = 0;
     for (const book of this.data.books) {
       if (!ids.includes(book.id)) continue;
+      if (update.title !== undefined) book.title = update.title;
+      if (update.author !== undefined) book.author = update.author;
       if (update.sectionId !== undefined) book.sectionId = update.sectionId;
       if (update.seriesId !== undefined) book.seriesId = update.seriesId;
       if (update.categoryIds !== undefined) book.categoryIds = update.categoryIds;
+      if (update.addCategoryIds) {
+        for (const id of update.addCategoryIds) {
+          if (!book.categoryIds.includes(id)) book.categoryIds.push(id);
+        }
+      }
+      if (update.removeCategoryIds) {
+        book.categoryIds = book.categoryIds.filter((id) => !update.removeCategoryIds!.includes(id));
+      }
+      count++;
+    }
+    if (count > 0) await this.save();
+    return count;
+  }
+
+  async bulkAssignVolumes(
+    orderedIds: string[],
+    startFrom: number
+  ): Promise<number> {
+    let count = 0;
+    for (let i = 0; i < orderedIds.length; i++) {
+      const book = this.data.books.find((b) => b.id === orderedIds[i]);
+      if (!book) continue;
+      book.volumeNumber = startFrom + i;
       count++;
     }
     if (count > 0) await this.save();
@@ -357,6 +389,7 @@ export class MetadataStore {
 
     return this.data.books.filter((b) => {
       if (b.title.toLowerCase().includes(q)) return true;
+      if (b.author && b.author.toLowerCase().includes(q)) return true;
       if (b.sectionId && sectionMap.get(b.sectionId)?.includes(q)) return true;
       if (b.seriesId && seriesMap.get(b.seriesId)?.includes(q)) return true;
       if (b.categoryIds.some((cid) => catMap.get(cid)?.includes(q))) return true;
